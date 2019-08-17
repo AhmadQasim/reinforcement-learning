@@ -41,10 +41,26 @@ for i in range(episodes):
         observation = new_observation
         if done:
             break
-    if epsilon > min_epsilon:
-        epsilon -= eps_decay
+    epsilon = min_epsilon + (1 - min_epsilon)*np.exp(-eps_decay*i)
     rewards.append(total_reward_per_episode)
 env.close()
 
-# plot rewards
 print("Average reward: ", sum(rewards)/episodes)
+
+
+# test agent
+test_eps = 3000
+rewards = []
+for i in range(test_eps):
+    observation = env.reset()
+    total_reward_per_episode = 0
+    for _ in range(max_actions_per_episode):
+        action = np.argmax(q_table[observation, :])
+        new_observation, reward, done, info = env.step(action)
+        total_reward_per_episode += reward
+        observation = new_observation
+        if done:
+            break
+    rewards.append(total_reward_per_episode)
+
+print("Average reward for test agent: ", sum(rewards)/test_eps)
