@@ -2,3 +2,5 @@ numpy
 gym
 matplotlib
 fire
+gym[atari]
+tensorflow-gpu
