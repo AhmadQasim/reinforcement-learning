@@ -4,26 +4,27 @@ import numpy as np
 import random
 import tensorflow.keras.layers as layers
 import tensorflow.keras.models as models
-from tensorflow.keras.callbacks import ModelCheckpoint
+
 from baselines.common.atari_wrappers import FrameStack, WarpFrame
 
 
 class DeepQNetwork:
     def __init__(self):
-        self.env = gym.make('Pong-v0')
+        self.env = gym.make('SpaceInvaders-v0')
         self.replay_buffer = []
+        self.replay_buffer_size_thresh = 350
         self.env = WarpFrame(self.env)
         self.env = FrameStack(self.env, 4)
         self.episodes = 100
-        self.max_actions_per_episode = 100
+        self.max_actions_per_episode = 500
         self.epsilon = 1
         self.min_epsilon = 0.01
-        self.eps_decay = 0.0005
+        self.eps_decay = 0.00025
         self.decay_step = 0
         self.learning_rate = 0.8
         self.discount_factor = 0.99
         self.rewards = []
-        self.test_eps = 3000
+        self.test_eps = 50
         self.test_rewards = []
         self.model = None
         self.batch_size = 64
@@ -49,21 +50,46 @@ class DeepQNetwork:
         fc2 = layers.Dense(self.env.action_space.n)(fc1)
 
         model = models.Model(inputs=inputs, outputs=fc2)
-        model.compile(optimizer='adam', loss='mse')
+        model.compile(optimizer='rmsprop', loss='mse')
         model.summary()
         self.model = model
 
     def save_to_memory(self, experience):
+        # experience = (observation, action, reward, done, new_observation)
+        if len(self.replay_buffer) > self.replay_buffer_size_thresh:
+            del self.replay_buffer[0]
         self.replay_buffer.append(experience)
 
     def sample_from_memory(self):
         return random.sample(self.replay_buffer,
                              min(len(self.replay_buffer), self.batch_size))
 
+    def fill_empty_memory(self):
+        observation = self.env.reset()
+        for _ in range(self.batch_size):
+            new_observation, action, reward, done = self.take_action(observation)
+            self.save_to_memory((observation, action, reward, done, new_observation))
+            observation = new_observation
+
+    def take_action(self, observation):
+        # take random actiom
+        if np.random.rand() < self.epsilon:
+            action = self.env.action_space.sample()
+        # take best action
+        else:
+            action = np.argmax(self.model.predict(np.expand_dims(observation, axis=0)))
+
+        # take action
+        new_observation, reward, done, info = self.env.step(action)
+        new_observation = np.asarray(list(new_observation))
+        return new_observation, action, reward, done
+
     def train(self):
         # initialize deep-q agent
         self.create_model()
-        model_cp = ModelCheckpoint(self.model_path, monitor='loss', verbose=0, save_best_only=True, mode='min')
+
+        # fill empty memory before starting training
+        self.fill_empty_memory()
 
         for i in range(self.episodes):
             print("Episode: ", i)
@@ -73,18 +99,9 @@ class DeepQNetwork:
             for a in range(self.max_actions_per_episode):
                 self.epsilon = self.min_epsilon + (1 - self.min_epsilon) * np.exp(-self.eps_decay * self.decay_step)
                 self.decay_step += 1
-                print("Epsilon: ", self.epsilon)
 
-                # take random action
-                if np.random.rand() < self.epsilon:
-                    action = self.env.action_space.sample()
-                # take best action
-                else:
-                    action = np.argmax(self.model.predict(np.expand_dims(observation, axis=0)))
-
-                # take action
-                new_observation, reward, done, info = self.env.step(action)
-                new_observation = np.asarray(list(new_observation))
+                # take step
+                new_observation, action, reward, done = self.take_action(observation)
 
                 # save to experience buffer
                 self.save_to_memory((observation, action, reward, done, new_observation))
@@ -108,7 +125,7 @@ class DeepQNetwork:
                     q_targets.append(curr_q_vals[0])
 
                 # train agent on minibatch
-                self.model.fit(np.asarray(x_batch), np.asarray(q_targets), batch_size=len(minibatch), callbacks=[model_cp])
+                self.model.fit(np.asarray(x_batch), np.asarray(q_targets), batch_size=len(minibatch))
 
                 # track reward per episode
                 total_reward_per_episode += reward
@@ -117,9 +134,29 @@ class DeepQNetwork:
                 observation = new_observation
 
             self.rewards.append(total_reward_per_episode)
+            print("Reward: ", total_reward_per_episode)
+        self.model.save(self.model_path)
         self.env.close()
 
         print("Average reward: ", sum(self.rewards) / self.episodes)
+
+    def test(self):
+        # test agent
+        self.model = models.load_model('models/DQN.hdf5')
+        for i in range(self.test_eps):
+            observation = np.asarray(list(self.env.reset()))
+            total_reward_per_episode = 0
+            for _ in range(self.max_actions_per_episode):
+                self.env.render()
+                action = np.argmax(self.model.predict(np.expand_dims(observation, axis=0)))
+                new_observation, reward, done, info = self.env.step(action)
+                total_reward_per_episode += reward
+                observation = new_observation
+                if done:
+                    break
+            self.test_rewards.append(total_reward_per_episode)
+
+        print("Average reward for test agent: ", sum(self.test_rewards) / self.test_eps)
 
 
 if __name__ == "__main__":
