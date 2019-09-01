@@ -1,6 +1,7 @@
 import fire
 import numpy as np
 import gym
+from gym import wrappers
 from keras.layers import Input, Dense, Softmax
 from keras.models import Model
 import keras.models as models
@@ -12,19 +13,20 @@ Implementation of Vanilla Policy Gradient algorithm REINFORCE
 
 
 class REINFORCE:
-    def __init__(self):
+    def __init__(self, save_vid=False):
         self.env = gym.make('CartPole-v1')
-        self.env = self.env.unwrapped
-        self.env.seed(1)
+        if save_vid:
+            self.env = wrappers.Monitor(self.env, 'demos/', force=True)
         self.state_shape = self.env.observation_space.shape
         self.action_shape = self.env.action_space.n
         self.model = None
-        self.episodes = 1000
+        self.episodes = 1500
         self.max_steps = 10000
         self.gamma = 0.95
         self.test_model = None
         self.test_episodes = 100
         self.test_rewards = []
+        self.model_path = "models/REINFORCE.hdf5"
 
     def create_model(self):
         inputs = Input(shape=self.state_shape)
@@ -104,11 +106,11 @@ class REINFORCE:
 
                     break
 
-        self.test_model.save('models/REINFORCE.hdf5')
+        self.test_model.save(self.model_path)
 
     def test(self):
         # test agent
-        self.model = models.load_model('models/REINFORCE.hdf5', compile=False)
+        self.model = models.load_model(self.model_path, compile=False)
         for i in range(self.test_episodes):
             observation = np.asarray(list(self.env.reset()))
             total_reward_per_episode = 0
