@@ -4,3 +4,4 @@ matplotlib
 fire
 gym[atari]
 tensorflow-gpu
+keras
