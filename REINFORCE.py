@@ -26,7 +26,7 @@ class REINFORCE:
         self.test_model = None
         self.test_episodes = 100
         self.test_rewards = []
-        self.model_path = "models/REINFORCE.hdf5"
+        self.model_path = "models/REINFORCE2.hdf5"
 
     def create_model(self):
         inputs = Input(shape=self.state_shape)
