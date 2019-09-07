@@ -8,7 +8,7 @@ import keras.models as models
 import keras.backend as K
 
 """
-Implementation of Vanilla Policy Gradient algorithm REINFORCE
+Implementation of Vanilla Policy Gradient with Monte Carlo returns, also called REINFORCE
 """
 
 
@@ -20,30 +20,30 @@ class REINFORCE:
         self.state_shape = self.env.observation_space.shape
         self.action_shape = self.env.action_space.n
         self.model = None
-        self.episodes = 1500
+        self.episodes = 15000
         self.max_steps = 10000
         self.gamma = 0.95
         self.test_model = None
         self.test_episodes = 100
         self.test_rewards = []
-        self.model_path = "models/REINFORCE2.hdf5"
+        self.model_path = "models/REINFORCE.hdf5"
 
     def create_model(self):
         inputs = Input(shape=self.state_shape)
         labels = Input(shape=(self.action_shape, ))
-        rewards = Input(shape=(1, ))
+
         fc1 = Dense(10, activation='relu')(inputs)
         fc2 = Dense(self.action_shape, activation='relu')(fc1)
-        fc3 = Dense(self.action_shape, activation='linear')(fc2)
+        fc3 = Dense(self.action_shape, activation='relu')(fc2)
 
         output = Softmax()(fc3)
 
-        model = Model(inputs=[inputs, labels, rewards], outputs=output)
-        model.add_loss(self.score_function(labels, output, rewards))
+        model = Model(inputs=[inputs, labels], outputs=output)
+        model.add_loss(self.score_function(labels, output))
         model.compile(optimizer='adam', loss=None)
 
         test_model = Model(inputs=inputs, output=output)
-        test_model.add_loss(self.score_function(labels, output, rewards))
+        test_model.add_loss(self.score_function(labels, output))
         test_model.compile(optimizer='adam', loss=None)
 
         model.summary()
@@ -52,14 +52,13 @@ class REINFORCE:
         self.test_model = test_model
 
     @staticmethod
-    def score_function(y_true, y_pred, rewards):
-        j_gradient = - K.log(y_pred) * y_true * rewards
-        return K.mean(j_gradient)
+    def score_function(y_true, y_pred):
+        j_gradient = - K.log(y_pred) * y_true
+        return K.sum(j_gradient)
 
     def take_action(self, state):
         action_probs = self.test_model.predict(np.expand_dims(state, axis=0))
         action = np.random.choice(range(action_probs.shape[1]), p=action_probs.ravel())
-
         return action, action_probs
 
     def discounted_normalized_rewards(self, episode_rewards):
@@ -92,7 +91,12 @@ class REINFORCE:
 
                 if done:
                     discounted_rewards = self.discounted_normalized_rewards(episode_rewards)
-                    self.model.fit([np.array(episode_states), np.array(episode_actions), discounted_rewards])
+                    discounted_rewards = np.expand_dims(discounted_rewards, axis=1)
+                    episode_actions = np.array(episode_actions) * discounted_rewards
+
+                    model_input = [np.array(episode_states),
+                                   episode_actions]
+                    self.model.fit(model_input, batch_size=len(episode_states))
 
                     total_episode_reward = np.sum(episode_rewards)
                     all_rewards.append(total_episode_reward)
@@ -110,13 +114,13 @@ class REINFORCE:
 
     def test(self):
         # test agent
-        self.model = models.load_model(self.model_path, compile=False)
+        agent = models.load_model(self.model_path, compile=False)
         for i in range(self.test_episodes):
             observation = np.asarray(list(self.env.reset()))
             total_reward_per_episode = 0
             while True:
                 self.env.render()
-                action_probs = self.model.predict(np.expand_dims(observation, axis=0))
+                action_probs = agent.predict(np.expand_dims(observation, axis=0))
                 action = np.random.choice(range(action_probs.shape[1]), p=action_probs.ravel())
                 new_observation, reward, done, info = self.env.step(action)
                 total_reward_per_episode += reward
