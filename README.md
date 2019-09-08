@@ -3,10 +3,11 @@ Self-study and implementation of Deep Reinforcement Learning algorithms with a f
 
 The following algorithms can be found in the repo:
 
-1. Tabular (Discrete) Q-Learning
+1. Tabular Q-Learning
 2. Deep Q-Learning
 3. REINFORCE (Vanilla Policy Gradient with Monte Carlo returns)
 4. Advantage Actor Critic (A2C)
+5. Proximal Policy Optimization (PPO)
 
 ### Usage
 1. Install dependencies using `pip3 install -r requirements.txt`

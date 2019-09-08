@@ -127,7 +127,7 @@ class ProximalPolicyOptimization:
                 advantages.append(action_one_hot)
                 v_targets.append(curr_state_v_vals[0])
 
-        # fit old actor
+        # predict using old policy
         old_actor_prediction = self.get_old_actor_prediction(states)
 
         ac_input = [np.array(states),

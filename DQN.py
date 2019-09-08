@@ -12,11 +12,11 @@ class DeepQNetwork:
     def __init__(self):
         self.env = gym.make('SpaceInvaders-v0')
         self.replay_buffer = []
-        self.replay_buffer_size_thresh = 350
+        self.replay_buffer_size_thresh = 100000
         self.env = WarpFrame(self.env)
         self.env = FrameStack(self.env, 4)
         self.episodes = 100
-        self.max_actions_per_episode = 500
+        self.max_actions_per_episode = 100
         self.epsilon = 1
         self.min_epsilon = 0.01
         self.eps_decay = 0.00025
@@ -66,7 +66,7 @@ class DeepQNetwork:
 
     def fill_empty_memory(self):
         observation = self.env.reset()
-        for _ in range(self.batch_size):
+        for _ in range(10000):
             new_observation, action, reward, done = self.take_action(observation)
             self.save_to_memory((observation, action, reward, done, new_observation))
             if done:
@@ -85,6 +85,28 @@ class DeepQNetwork:
         new_observation, reward, done, info = self.env.step(action)
         new_observation = np.asarray(list(new_observation))
         return new_observation, action, reward, done
+
+    def optimize_model(self):
+        # sample minibatch from memory
+        minibatch = self.sample_from_memory()
+        x_batch = []
+        q_targets = []
+
+        # for each experience in minibatch, set q-target
+        for idx, (state, act, rew, done, next_state) in enumerate(minibatch):
+            x_batch.append(state)
+            if done:
+                next_state_q_value = rew
+            else:
+                next_state_q_value = np.max(
+                    self.model.predict(np.expand_dims(np.asarray(list(next_state)), axis=0)))
+
+            curr_q_vals = self.model.predict(np.expand_dims(np.asarray(list(state)), axis=0))
+            curr_q_vals[0][act] = rew + self.discount_factor * next_state_q_value
+            q_targets.append(curr_q_vals[0])
+
+        # train agent on minibatch
+        self.model.fit(np.asarray(x_batch), np.asarray(q_targets), batch_size=len(minibatch), verbose=0)
 
     def train(self):
         # initialize deep-q agent
@@ -108,32 +130,17 @@ class DeepQNetwork:
                 # save to experience buffer
                 self.save_to_memory((observation, action, reward, done, new_observation))
 
-                # sample minibatch from memory
-                minibatch = self.sample_from_memory()
-                x_batch = []
-                q_targets = []
-
-                # for each experience in minibatch, set q-target
-                for idx, (state, act, rew, done, next_state) in enumerate(minibatch):
-                    x_batch.append(state)
-                    if done:
-                        next_state_q_value = rew
-                    else:
-                        next_state_q_value = np.max(
-                            self.model.predict(np.expand_dims(np.asarray(list(next_state)), axis=0)))
-
-                    curr_q_vals = self.model.predict(np.expand_dims(np.asarray(list(state)), axis=0))
-                    curr_q_vals[0][act] = rew + self.discount_factor * next_state_q_value
-                    q_targets.append(curr_q_vals[0])
-
-                # train agent on minibatch
-                self.model.fit(np.asarray(x_batch), np.asarray(q_targets), batch_size=len(minibatch))
+                # fit model
+                self.optimize_model()
 
                 # track reward per episode
                 total_reward_per_episode += reward
 
                 # update state
                 observation = new_observation
+
+                if done:
+                    break
 
             self.rewards.append(total_reward_per_episode)
             print("Reward: ", total_reward_per_episode)
