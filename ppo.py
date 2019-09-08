@@ -35,7 +35,7 @@ class ProximalPolicyOptimization:
         self.actor_lr = 0.001
         self.critic_lr = 0.005
         self.epochs = 10
-        self.model_path = "models/a2c_td.hdf5"
+        self.model_path = "models/PPO.hdf5"
 
     def create_actor_model(self):
         inputs = Input(shape=self.state_shape)
@@ -58,10 +58,10 @@ class ProximalPolicyOptimization:
 
     @staticmethod
     def clipped_surrogate_objective(old_policy, new_policy, advantages):
-        ratio = (new_policy / old_policy)
+        ratio = new_policy / (old_policy + 1e-10)
         clipped_ratio = K.clip(ratio, 0.8, 1.2)
-        loss = K.minimum(K.sum(ratio*advantages), K.sum(clipped_ratio*advantages))
-        return loss
+        loss = K.minimum(ratio*advantages, clipped_ratio*advantages)
+        return -K.mean(loss)
 
     def create_critic_model(self):
         inputs = Input(shape=self.state_shape)
@@ -95,7 +95,6 @@ class ProximalPolicyOptimization:
 
     def take_action(self, state):
         action_probs = self.actor_predict_only.predict(np.expand_dims(state, axis=0))
-        print(action_probs)
         action = np.random.choice(range(action_probs.shape[1]), p=action_probs.ravel())
         new_observation, reward, done, info = self.env.step(action)
         return new_observation, action, reward, done
