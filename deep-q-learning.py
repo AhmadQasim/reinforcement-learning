@@ -69,6 +69,8 @@ class DeepQNetwork:
         for _ in range(self.batch_size):
             new_observation, action, reward, done = self.take_action(observation)
             self.save_to_memory((observation, action, reward, done, new_observation))
+            if done:
+                new_observation = self.env.reset()
             observation = new_observation
 
     def take_action(self, observation):
