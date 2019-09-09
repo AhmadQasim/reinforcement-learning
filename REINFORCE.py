@@ -53,8 +53,8 @@ class REINFORCE:
 
     @staticmethod
     def score_function(y_true, y_pred):
-        j_gradient = - K.log(y_pred) * y_true
-        return K.sum(j_gradient)
+        loss = - K.log(y_pred) * y_true
+        return K.mean(loss)
 
     def take_action(self, state):
         action_probs = self.test_model.predict(np.expand_dims(state, axis=0))
