@@ -1,4 +1,4 @@
-# Deep Reinforcement Learning
+# Reinforcement Learning
 Self-study and implementation of deep reinforcement learning papers/algorithms with a friend.
 
 The following algorithms can be found in the repo:
