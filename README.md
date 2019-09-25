@@ -1,5 +1,5 @@
 # Reinforcement Learning
-Self-study and implementation of deep reinforcement learning papers/algorithms with a friend.
+Self-study and implementations of deep reinforcement learning papers/algorithms with a friend.
 
 The following algorithms can be found in the repo:
 
@@ -11,6 +11,8 @@ The following algorithms can be found in the repo:
 [Paper: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/pdf/1602.01783.pdf)]
 5. **Proximal Policy Optimization (PPO)**  
 [Paper: [Proximal Policy Optimization Algorithms](https://arxiv.org/pdf/1707.06347.pdf)]
+6. **Deep Deterministic Policy Gradients (DDPG)**  
+[Paper: [Continuous control with deep reinforcement learning](https://arxiv.org/pdf/1509.02971.pdf)]
 
 ### Usage
 1. Install dependencies using `pip3 install -r requirements.txt`
