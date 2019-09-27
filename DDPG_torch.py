@@ -34,7 +34,7 @@ class DDPG:
         self.episodes = 5000
         self.max_steps = 500
         self.gamma = 0.99
-        self.test_episodes = 100
+        self.test_episodes = 1000
         self.discount_factor = 0.99
         self.test_rewards = []
         self.actor_lr = 0.001
@@ -165,6 +165,24 @@ class DDPG:
             print("==========================================")
 
             torch.save(self.actor, self.model_path)
+
+    def test(self):
+        # test agent
+        actor = torch.load(self.model_path)
+        for i in range(self.test_episodes):
+            observation = np.asarray(list(self.env.reset()))
+            total_reward_per_episode = 0
+            while True:
+                self.env.render()
+                action = actor.forward(torch.tensor(observation, dtype=torch.float, device=self.device))
+                new_observation, reward, done, info = self.env.step(action.cpu().detach().numpy())
+                total_reward_per_episode += reward
+                observation = new_observation
+                if done:
+                    break
+            self.test_rewards.append(total_reward_per_episode)
+
+        print("Average reward for test agent: ", sum(self.test_rewards) / self.test_episodes)
 
 
 class Actor(nn.Module):
