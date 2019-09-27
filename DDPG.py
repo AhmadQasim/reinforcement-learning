@@ -46,7 +46,6 @@ class DDPG:
         self.act_range = 2.0
         self.model_path = "models/DDPG.hdf5"
 
-
     def create_actor_model(self):
         input = Input(shape=self.state_shape)
         q_value = Input((1, ))
