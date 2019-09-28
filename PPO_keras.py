@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 """
-Implementation of Proximal Policy Optimization on A2C with TD-0 value returns
+Implementation of Proximal Policy Optimization on A2C with TD-0 value returns in Keras
 """
 
 # limit gpu memory usage

@@ -6,13 +6,13 @@ import torch.nn.functional as F
 import numpy as np
 
 """
-Implementation of Deep Deterministic Policy Gradients on A2C with TD-0 value returns
+Implementation of Deep Deterministic Policy Gradients on A2C with TD-0 value returns in PyTorch
 """
 
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-class PPO:
+class ProximalPolicyOptimization:
     def __init__(self):
         self.env = gym.make('CartPole-v1')
         self.state_shape = self.env.observation_space.shape
@@ -33,15 +33,9 @@ class PPO:
         self.test_episodes = 1000
         self.discount_factor = 0.99
         self.test_rewards = []
-        self.epochs = 10
-        self.epsilon = 1
-        self.min_epsilon = 0.01
-        self.eps_decay = 0.005
         self.default_q_value_actor = -1
         self.actor_lr = 0.001
         self.critic_lr = 0.005
-        # range of the action possible for Pendulum-v0
-        self.act_range = 2.0
         self.model_path = "models/PPO_CartPole.hdf5"
 
         # models
@@ -80,14 +74,6 @@ class PPO:
         observation = self.env.reset()
         for _ in range(100):
             new_observation, action, reward, done = self.take_action(observation)
-            '''
-            # Adjust reward based on car position
-            reward = observation[0] + 0.5
-
-            # Adjust reward for task completion
-            if observation[0] >= 0.5:
-                reward += 1
-            '''
             reward = reward if not done else -100
             action_one_hot = torch.zeros(size=(1, self.action_shape))
             action_one_hot[0, action] = 1
@@ -147,6 +133,7 @@ class PPO:
         critic_loss.backward()
         self.critic_optim.step()
 
+        # transfer actor weights
         self.hard_update(self.actor, self.old_actor)
 
     def train(self):
@@ -162,14 +149,6 @@ class PPO:
             for step in range(self.max_steps):
                 observation = np.squeeze(observation)
                 new_observation, action, reward, done = self.take_action(observation)
-                '''
-                # Adjust reward based on car position
-                reward = observation[0] + 0.5
-
-                # Adjust reward for task completion
-                if observation[0] >= 0.5:
-                    reward += 1
-                '''
                 reward = reward if not done else -100
                 action_one_hot = torch.zeros(size=(1, self.action_shape))
                 action_one_hot[0, action] = 1
@@ -256,4 +235,4 @@ class Critic(nn.Module):
 
 
 if __name__ == '__main__':
-    fire.Fire(PPO)
+    fire.Fire(ProximalPolicyOptimization)

@@ -33,12 +33,9 @@ class DDPG:
         self.batch_size = 64
         self.episodes = 5000
         self.max_steps = 500
-        self.gamma = 0.99
         self.test_episodes = 1000
         self.discount_factor = 0.99
         self.test_rewards = []
-        self.actor_lr = 0.001
-        self.critic_lr = 0.005
         self.epochs = 10
         self.tau = 1e-3
         self.epsilon = 1
@@ -48,7 +45,7 @@ class DDPG:
         self.noise = OrnsteinUhlenbeckProcess(size=self.action_shape)
         # range of the action possible for Pendulum-v0
         self.act_range = 2.0
-        self.model_path = "models/DDPG-MC.hdf5"
+        self.model_path = "models/DDPG-Pendulum.hdf5"
 
         # models
         self.actor_optim = torch.optim.Adam(self.actor.parameters())
