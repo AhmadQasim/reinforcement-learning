@@ -5,8 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from utils import OrnsteinUhlenbeckProcess
-
 """
 Implementation of Deep Deterministic Policy Gradients on A2C with TD-0 value returns
 """
@@ -14,48 +12,43 @@ Implementation of Deep Deterministic Policy Gradients on A2C with TD-0 value ret
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-class DDPG:
+class PPO:
     def __init__(self):
-        self.env = gym.make('Pendulum-v0')
+        self.env = gym.make('CartPole-v1')
         self.state_shape = self.env.observation_space.shape
-        self.action_shape = self.env.action_space.shape
+        self.action_shape = self.env.action_space.n
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.target_actor = Actor(self.state_shape, self.action_shape)
-        self.target_critic = Critic(self.state_shape, self.action_shape)
+        self.old_actor = Actor(self.state_shape, self.action_shape)
         self.actor = Actor(self.state_shape, self.action_shape)
         self.critic = Critic(self.state_shape, self.action_shape)
         self.replay_buffer_states = torch.zeros(size=(1, self.state_shape[0]))
-        self.replay_buffer_actions = torch.zeros(size=(1, self.action_shape[0]))
+        self.replay_buffer_actions = torch.zeros(size=(1, self.action_shape))
         self.replay_buffer_rewards = torch.zeros(size=(1, 1))
-        self.replay_buffer_done = torch.zeros(size=(1, 1))
+        self.replay_buffer_done = torch.zeros(size=(1, 1), dtype=torch.float)
         self.replay_buffer_next_states = torch.zeros(size=(1, self.state_shape[0]))
         self.replay_buffer_size_thresh = 100000
         self.batch_size = 64
         self.episodes = 5000
-        self.max_steps = 500
-        self.gamma = 0.99
+        self.max_steps = 1000
         self.test_episodes = 1000
         self.discount_factor = 0.99
         self.test_rewards = []
-        self.actor_lr = 0.001
-        self.critic_lr = 0.005
         self.epochs = 10
-        self.tau = 1e-3
         self.epsilon = 1
         self.min_epsilon = 0.01
         self.eps_decay = 0.005
         self.default_q_value_actor = -1
-        self.noise = OrnsteinUhlenbeckProcess(size=self.action_shape)
+        self.actor_lr = 0.001
+        self.critic_lr = 0.005
         # range of the action possible for Pendulum-v0
         self.act_range = 2.0
-        self.model_path = "models/DDPG-MC.hdf5"
+        self.model_path = "models/PPO_CartPole.hdf5"
 
         # models
-        self.actor_optim = torch.optim.Adam(self.actor.parameters())
-        self.critic_optim = torch.optim.Adam(self.critic.parameters())
+        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.actor_lr)
+        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.critic_lr)
         self.critic_loss = nn.MSELoss()
-        self.hard_update(self.actor, self.target_actor)
-        self.hard_update(self.critic, self.target_critic)
+        self.hard_update(self.actor, self.old_actor)
 
     def save_to_memory(self, experience):
         if self.replay_buffer_states.shape[0] > self.replay_buffer_size_thresh:
@@ -77,8 +70,9 @@ class DDPG:
                 self.replay_buffer_next_states[random_rows, :]]
 
     def take_action(self, state):
-        action = self.actor.forward(torch.tensor(state, dtype=torch.float))
-        action = action.cpu().detach().numpy()
+        action_probs = self.actor.forward(torch.tensor(state, dtype=torch.float))
+        action_probs = action_probs.cpu().detach().numpy()
+        action = np.random.choice(range(action_probs.shape[0]), p=action_probs.ravel())
         new_observation, reward, done, info = self.env.step(action)
         return new_observation, action, reward, done
 
@@ -86,9 +80,19 @@ class DDPG:
         observation = self.env.reset()
         for _ in range(100):
             new_observation, action, reward, done = self.take_action(observation)
-            done = 1.0 if done else 0.0
+            '''
+            # Adjust reward based on car position
+            reward = observation[0] + 0.5
+
+            # Adjust reward for task completion
+            if observation[0] >= 0.5:
+                reward += 1
+            '''
+            reward = reward if not done else -100
+            action_one_hot = torch.zeros(size=(1, self.action_shape))
+            action_one_hot[0, action] = 1
             self.save_to_memory([torch.tensor(observation, dtype=torch.float).unsqueeze(0),
-                                 torch.tensor(action, dtype=torch.float).unsqueeze(0),
+                                 action_one_hot,
                                  torch.tensor(reward, dtype=torch.float).unsqueeze(0).unsqueeze(0),
                                  torch.tensor(done, dtype=torch.float).unsqueeze(0).unsqueeze(0),
                                  torch.tensor(new_observation, dtype=torch.float).unsqueeze(0)
@@ -97,45 +101,60 @@ class DDPG:
                 new_observation = self.env.reset()
             observation = new_observation
 
-    def soft_update(self, source, target):
-        for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(
-                target_param.data * (1.0 - self.tau) + param.data * self.tau
-            )
-
     @staticmethod
     def hard_update(source, target):
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(param.data)
 
+    @staticmethod
+    def clipped_surrogate_objective(old_policy, new_policy, advantages):
+        ratio = new_policy / (old_policy + 1e-10)
+        clipped_ratio = torch.clamp(ratio, 0.8, 1.2)
+        loss = torch.min(ratio*advantages, clipped_ratio*advantages)
+        return -torch.mean(loss)
+
     def optimize_model(self):
         states, actions, rewards, done, next_states = self.sample_from_memory()
 
-        target_actions = self.target_actor.forward(next_states)
-        target_state_q_vals = self.target_critic.forward(next_states, target_actions)
-        q_values = self.critic.forward(states, actions)
-        q_targets = rewards + (self.discount_factor * target_state_q_vals)
+        done = 1 - done
+        curr_v_vals = self.critic.forward(states)
+        next_v_vals = self.critic.forward(next_states)
 
-        # update critic
+        target_v_vals = done * (self.discount_factor * next_v_vals)
+        target_v_vals += rewards
+
+        old_actor_prediction = self.old_actor.forward(states)
+        new_actor_prediction = self.actor.forward(states)
+        advantages = target_v_vals - curr_v_vals
+
+        advantages = advantages * actions
+
+        old_actor_prediction = old_actor_prediction.detach()
+        advantages = advantages.detach()
+        target_v_vals = target_v_vals.detach()
+
+        # actor update
+        self.actor.zero_grad()
+        actor_loss = self.clipped_surrogate_objective(old_actor_prediction,
+                                                      new_actor_prediction,
+                                                      advantages)
+        actor_loss.backward(retain_graph=True)
+        self.actor_optim.step()
+
+        # critic update
         self.critic.zero_grad()
-        critic_loss = self.critic_loss(q_values, q_targets)
+        critic_loss = self.critic_loss(self.critic.forward(states), target_v_vals)
         critic_loss.backward()
         self.critic_optim.step()
 
-        # update actor
-        self.actor.zero_grad()
-        actor_loss = - self.critic.forward(states, self.actor.forward(states))
-        actor_loss = actor_loss.mean()
-        actor_loss.backward()
-        self.actor_optim.step()
-
-        # soft update weights
-        self.soft_update(self.actor, self.target_actor)
-        self.soft_update(self.critic, self.target_critic)
+        self.hard_update(self.actor, self.old_actor)
 
     def train(self):
         self.fill_empty_memory()
         total_reward = 0
+
+        for p in self.old_actor.parameters():
+            p.requires_grad = False
 
         for ep in range(self.episodes):
             episode_rewards = []
@@ -143,11 +162,19 @@ class DDPG:
             for step in range(self.max_steps):
                 observation = np.squeeze(observation)
                 new_observation, action, reward, done = self.take_action(observation)
-                action = np.clip(action+self.noise.generate(step), -self.act_range, self.act_range)
-                # action = action+self.noise.generate(step)
+                '''
+                # Adjust reward based on car position
+                reward = observation[0] + 0.5
 
+                # Adjust reward for task completion
+                if observation[0] >= 0.5:
+                    reward += 1
+                '''
+                reward = reward if not done else -100
+                action_one_hot = torch.zeros(size=(1, self.action_shape))
+                action_one_hot[0, action] = 1
                 self.save_to_memory([torch.tensor(observation, dtype=torch.float).unsqueeze(0),
-                                     torch.tensor(action, dtype=torch.float).unsqueeze(0),
+                                     action_one_hot,
                                      torch.tensor(reward, dtype=torch.float).unsqueeze(0).unsqueeze(0),
                                      torch.tensor(done, dtype=torch.float).unsqueeze(0).unsqueeze(0),
                                      torch.tensor(new_observation, dtype=torch.float).unsqueeze(0)
@@ -155,8 +182,6 @@ class DDPG:
                 episode_rewards.append(reward)
                 observation = new_observation
                 self.optimize_model()
-
-                self.epsilon = self.min_epsilon + (1 - self.min_epsilon) * np.exp(-self.eps_decay * ep)
 
                 if done:
                     break
@@ -178,8 +203,11 @@ class DDPG:
             total_reward_per_episode = 0
             while True:
                 self.env.render()
-                action = actor.forward(torch.tensor(observation, dtype=torch.float))
-                new_observation, reward, done, info = self.env.step(action.cpu().detach().numpy())
+                action_probs = actor.forward(torch.tensor(observation, dtype=torch.float))
+                action_probs = action_probs.cpu().detach().numpy()
+                action = np.random.choice(range(action_probs.shape[0]), p=action_probs.ravel())
+                print(action)
+                new_observation, reward, done, info = self.env.step(action)
                 total_reward_per_episode += reward
                 observation = new_observation
                 if done:
@@ -194,18 +222,16 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.state_shape = state_shape
         self.action_shape = action_shape
-        self.fc1 = nn.Linear(self.state_shape[0], 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, self.action_shape[0])
+        self.fc1 = nn.Linear(self.state_shape[0], 24)
+        self.fc2 = nn.Linear(24, self.action_shape)
 
         # initialize weights
         nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc3.weight)
+        nn.init.xavier_uniform_(self.fc2.weight)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = torch.tanh(self.fc3(x))
+        x = F.softmax(self.fc2(x), dim=0)
 
         return x
 
@@ -215,31 +241,19 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self.state_shape = state_shape
         self.action_shape = action_shape
-        self.fc1_state = nn.Linear(self.state_shape[0], 256)
-        self.fc1_action = nn.Linear(self.action_shape[0], 256)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 1)
+        self.fc1 = nn.Linear(self.state_shape[0], 24)
+        self.fc2 = nn.Linear(24, 1)
 
         # initialize weights
-        nn.init.xavier_uniform_(self.fc1_state.weight)
-        nn.init.xavier_uniform_(self.fc1_action.weight)
+        nn.init.xavier_uniform_(self.fc1.weight)
         nn.init.xavier_uniform_(self.fc2.weight)
-        nn.init.xavier_uniform_(self.fc3.weight)
 
-    def forward(self, state, action):
-        x1 = state
-        x2 = action
-
-        x1 = F.relu(self.fc1_state(x1))
-        x2 = F.relu(self.fc1_action(x2))
-
-        x = torch.cat([x1, x2], dim=1)
-
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
 
         return x
 
 
 if __name__ == '__main__':
-    fire.Fire(DDPG)
+    fire.Fire(PPO)

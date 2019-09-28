@@ -7,10 +7,17 @@ from keras.optimizers import Adam
 import keras.backend as K
 import gym
 import numpy as np
+import tensorflow as tf
 
 """
 Implementation of Proximal Policy Optimization on A2C with TD-0 value returns
 """
+
+# limit gpu memory usage
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+sess = tf.Session(config=config)
+K.set_session(sess)
 
 
 class ProximalPolicyOptimization:
@@ -28,14 +35,13 @@ class ProximalPolicyOptimization:
         self.batch_size = 64
         self.episodes = 1000
         self.max_steps = 1000
-        self.gamma = 0.99
         self.test_episodes = 100
         self.discount_factor = 0.99
         self.test_rewards = []
         self.actor_lr = 0.001
         self.critic_lr = 0.005
         self.epochs = 10
-        self.model_path = "models/PPO.hdf5"
+        self.model_path = "models/PPO-CartPole.hdf5"
 
     def create_actor_model(self):
         inputs = Input(shape=self.state_shape)
