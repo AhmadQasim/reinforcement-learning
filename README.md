@@ -13,6 +13,9 @@ The following algorithms can be found in the repo:
 [Paper: [Proximal Policy Optimization Algorithms](https://arxiv.org/pdf/1707.06347.pdf)]
 6. **Deep Deterministic Policy Gradients (DDPG)**  
 [Paper: [Continuous control with deep reinforcement learning](https://arxiv.org/pdf/1509.02971.pdf)]
+7. **Dynamics Randomization for RL Transfer Learning**  
+[Paper: [Sim-to-Real Transfer of Robotic Control with Dynamics Randomization](https://arxiv.org/pdf/1710.06537.pdf)]
+
 
 ### Usage
 1. Install dependencies using `pip3 install -r requirements.txt`
